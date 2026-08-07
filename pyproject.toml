@@ -1,0 +1,17 @@
+[project]
+name = "ga-string"
+version = "0.1.0"
+description = "Guess a string using a genetic algorithm"
+readme = "README.md"
+authors = [
+    { name = "Axel NCHO", email = "code@axel-ncho.com" }
+]
+requires-python = ">=3.14"
+dependencies = []
+
+[project.scripts]
+ga-string = "ga_string:main"
+
+[build-system]
+requires = ["uv_build>=0.12.2,<0.13.0"]
+build-backend = "uv_build"
