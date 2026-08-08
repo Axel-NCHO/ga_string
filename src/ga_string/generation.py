@@ -225,7 +225,7 @@ class _MutableIndividual(Individual):
         Replace the genes of this individual by random genes with a probability of `mutation_pb`
         """
         for i in range(len(self)):
-            if random.random() <= self.MUTATION_RATE:
+            if random.random() < self.MUTATION_RATE:
                 self._genes[i] = self._random_gene()
 
     @classmethod
