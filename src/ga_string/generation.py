@@ -46,7 +46,7 @@ class MismatchedGeneCount(Exception):
 
 class Amount(int):
     """
-    A amout is a int >= 1.
+    A amount is an int in [1,+].
     """
 
     def __new__(cls, value: int) -> Self:
@@ -62,7 +62,7 @@ class Rate(float):
 
     def __new__(cls, value: float) -> Self:
         if not 0.0 <= value < 1.0:
-            raise ValueError(f"rate must be in [0,1], {value} was given")
+            raise ValueError(f"rate must be in [0,1), {value} was given")
         return super().__new__(cls, value)
 
 
@@ -81,7 +81,7 @@ class Generation:
         size: Amount,
         *,
         target: Individual,
-        crossover_rate: Rate = DEFAULT_MUTATION_RATE,
+        crossover_rate: Rate = DEFAULT_CROSSOVER_RATE,
         crossover_points: Amount = DEFAULT_CROSSOVER_POINTS,
         mutation_rate: Rate = DEFAULT_MUTATION_RATE,
     ) -> None:
@@ -129,13 +129,15 @@ class Generation:
         )
         number = int(self.crossover_rate * len(self))
         # if number == 0, return at leat ine individual, the fittest one
-        return all_sorted[: number + 1]
+        if number == 0:
+            number = 1
+        return all_sorted[:number]
 
     def fittest(self) -> Individual:
         """
         Return the fittest individual of this generation.
         """
-        return self._select_fittests()[0]
+        return self._select_fittests()[0].freeze()
 
     def _crossover(
         self, parents: list[_MutableIndividual], *, mutate_children: bool = True
@@ -168,9 +170,6 @@ class Individual:
     def __init__(self, value: Genes) -> None:
         """
         Create a new individual
-
-        Raises:
-            InvalidGene
         """
         self._genes: Genes = value
 
@@ -331,14 +330,11 @@ class _MutableIndividual(Individual):
     def __init__(self, nb_genes: int, /) -> None:
         super().__init__(Genes.random(nb_genes))
 
-    @classmethod
-    def _with_genes(cls, value: Genes, /) -> Self:
+    def freeze(self) -> Individual:
         """
-        Create a mutable individual from a value
+        Returns an immutable individual
         """
-        this = cls(len(value))
-        this._genes = value
-        return this
+        return Individual(self._genes)
 
     def mutate(self, mutation_rate: Rate) -> None:
         """
@@ -377,6 +373,15 @@ class _MutableIndividual(Individual):
         return self._with_genes(Genes.from_iterable(genes1)), self._with_genes(
             Genes.from_iterable(genes2)
         )
+
+    @classmethod
+    def _with_genes(cls, value: Genes, /) -> Self:
+        """
+        Create a mutable individual from a value
+        """
+        this = cls(len(value))
+        this._genes = value
+        return this
 
     def _random_crossover_points(self, k: Amount, /) -> list[int]:
         """
