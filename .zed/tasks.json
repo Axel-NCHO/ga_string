@@ -1,0 +1,18 @@
+[
+  {
+    "label": "Test",
+    "command": "pytest",
+  },
+  {
+    "label": "Lint",
+    "command": "mypy . && pylint src/* tests/*",
+  },
+  {
+    "label": "Mypy",
+    "command": "mypy .",
+  },
+  {
+    "label": "Run",
+    "command": "ga-string",
+  },
+]

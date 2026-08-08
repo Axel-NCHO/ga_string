@@ -76,7 +76,7 @@ class Generation:
         as this geenration.
         """
         parents = self._fittests()
-        children: list[_MutableIndividual] = [deepcopy(parents[0])]  # elitism
+        children: list[_MutableIndividual] = [parents[0].copy()]  # elitism
         while len(children) != len(self):
             parents = random.choices(parents, k=2)
             child1, child2 = self._make_children(parents[0], parents[1])
@@ -188,6 +188,12 @@ class Individual:
             if self._genes[i] == target._genes[i]:  # pylint: disable=protected-access
                 raw_fitness += 1
         return _Fitness(raw_fitness)
+
+    def copy(self) -> Self:
+        """
+        Copy this individual
+        """
+        return deepcopy(self)
 
 
 class _MutableIndividual(Individual):

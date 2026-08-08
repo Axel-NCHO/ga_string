@@ -39,4 +39,4 @@ def main() -> None:
     if generation_count == max_generations:
         print("Reached max number of generations")
     if fittest == target:
-        print(f"Successfully guessed #{target} in #{generation_count} generations.")
+        print(f"Successfully guessed '{target}' in {generation_count} generations.")
