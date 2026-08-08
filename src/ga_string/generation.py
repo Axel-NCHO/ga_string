@@ -193,7 +193,7 @@ class Gene(str):
     A gene.
     """
 
-    SPACE: Final[str] = "abcdefghijklmnopqrstuvwxyz"
+    SPACE: Final[str] = "abcdefghijklmnopqrstuvwxyz_,!:.-? ABCDEFGHIJKLMNOPQRSTUVWXYZ"
     """
     All possible values of a gene
     """

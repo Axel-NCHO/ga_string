@@ -28,7 +28,7 @@ def main() -> None:
     )
     generation_count = 1
     fittest: Individual = generation.fittest()
-    while generation_count <= max_generations:
+    while generation_count < max_generations:
         print(f"Generation #{generation_count}")
         print(f"Best guess {fittest}")
         generation = generation.next_generation()
@@ -37,7 +37,8 @@ def main() -> None:
         if fittest == target:
             break
     print(f"Generation #{generation_count}")
-    print(f"Best guess {fittest}")
+    print(f"Best guess: {fittest}")
+    print(f"Fitness: {fittest.evaluate(target)}/{len(target)}")
     if generation_count == max_generations:
         print("Reached max number of generations")
     if fittest == target:

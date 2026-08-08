@@ -49,8 +49,8 @@ class TestIndividual:
         Test invalid gene
         """
         with pytest.raises(InvalidGene) as error:
-            _ = Individual(Genes.from_str("individual?"))
-            assert error.value.gene == "?"
+            _ = Individual(Genes.from_str("individual#"))
+        assert error.value.gene == "#"
 
     def test_evaluate(self) -> None:
         """
