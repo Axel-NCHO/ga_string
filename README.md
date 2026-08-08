@@ -1,7 +1,7 @@
 # Guess a string using a genetic algorithm
 
 ```shell
-$ uv run ga_string
+$ uv run ga-string
 Target individual/phrase to guess
  (valid genes/characters: 'abcdefghijklmnopqrstuvwxyz_,!:.-? ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'): hello world
 Individuals/guesses per generation (int, > 0)
