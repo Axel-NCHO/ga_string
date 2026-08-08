@@ -70,8 +70,31 @@ class TestMutableIndividual:
         """
         Test creating a mutable individual from a value
         """
-        mut_individual = _MutableIndividual.from_value("individual")
+        mut_individual = _MutableIndividual._from_value("individual")
         assert str(mut_individual) == "individual"
+
+    def test_make_children(self) -> None:
+        """
+        Test make two children from two parents
+        """
+        i1 = _MutableIndividual._from_value("aaaabbbb")
+        i2 = _MutableIndividual._from_value("ccccdddd")
+        with patch(
+            "ga_string.generation._MutableIndividual._random_crossover_point",
+            return_value=2,
+        ):
+            c1, c2 = i1.make_children(i2)
+            assert str(c1) == "aaccdddd"
+            assert str(c2) == "ccaabbbb"
+
+    def test_make_children_mismatched_gene_count(self) -> None:
+        """
+        Test make two children from two parents with different gene count
+        """
+        i1 = _MutableIndividual._from_value("aaaabbbb")
+        i2 = _MutableIndividual._from_value("ccccdddde")
+        with pytest.raises(MismatchedGeneCount):
+            _ = i1.make_children(i2)
 
 
 # pylint: enable=too-few-public-methods
@@ -89,36 +112,16 @@ class TestGeneration:
         generation = Generation(10, target=Individual("individual"))
         assert len(generation) == 10
 
-    def test_make_children(self) -> None:
-        """
-        Test make two children from two parents
-        """
-        i1 = Individual("aaaabbbb")
-        i2 = Individual("ccccdddd")
-        with patch(
-            "ga_string.generation.Individual.random_crossover_point", return_value=2
-        ):
-            c1, c2 = Generation._make_children(i1, i2)
-            assert str(c1) == "aaccdddd"
-            assert str(c2) == "ccaabbbb"
-
-    def test_make_children_mismatched_gene_count(self) -> None:
-        """
-        Test make two children from two parents with different gene count
-        """
-        i1 = Individual("aaaabbbb")
-        i2 = Individual("ccccdddde")
-        with pytest.raises(MismatchedGeneCount):
-            _ = Generation._make_children(i1, i2)
-
-    def test_fittests(self) -> None:
+    def test_top_fifty_percent(self) -> None:
         """
         Test the top 50% fittest individuals of a generation
         """
         generation = Generation(2, target=Individual("individual"))
         generation._individuals = [
-            _MutableIndividual.from_value("individuax"),
-            _MutableIndividual.from_value("individuxx"),
+            _MutableIndividual._from_value("individuax"),
+            _MutableIndividual._from_value("individuxx"),
         ]
-        assert generation._fittests() == [_MutableIndividual.from_value("individuax")]
+        assert generation._top_fifty_percent() == [
+            _MutableIndividual._from_value("individuax")
+        ]
         assert generation.fittest() == Individual("individuax")

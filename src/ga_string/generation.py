@@ -68,28 +68,26 @@ class Generation:
     def __len__(self) -> int:
         return len(self._individuals)
 
-    def crossover(self) -> Generation:
+    def next_generation(self) -> Generation:
         """
         Create a new generation from this generation by selecting the fittest
         individuals and creating offsprings from them.
         The new generation only contains the offsprings and has the same size
         as this geenration.
         """
-        parents = self._fittests()
-        children: list[_MutableIndividual] = [parents[0].copy()]  # elitism
-        while len(children) != len(self):
-            parents = random.choices(parents, k=2)
-            child1, child2 = self._make_children(parents[0], parents[1])
-            # add children one at a time to avoid going over the population size
-            for child in child1, child2:
-                if len(children) != len(self):
-                    child.mutate()
-                    children.append(child)
-        generation = Generation(len(self), target=self._target)
-        generation._individuals = children  # pylint: disable=protected-access
-        return generation
+        parents = self._select_fittests()
+        children = self._crossover(parents, mutate_children=True)
+        next_gen = Generation(len(self), target=self._target)
+        next_gen._individuals = children  # pylint: disable=protected-access
+        return next_gen
 
-    def _fittests(self) -> list[_MutableIndividual]:
+    def _select_fittests(self) -> list[_MutableIndividual]:
+        """
+        Select the fittest individuals
+        """
+        return self._top_fifty_percent()
+
+    def _top_fifty_percent(self) -> list[_MutableIndividual]:
         """
         Return the top 50% fittest individuals sorted in decreasing value of fitness.
         """
@@ -102,30 +100,29 @@ class Generation:
         """
         Return the fittest individual of this generation.
         """
-        return self._fittests()[0]
+        return self._top_fifty_percent()[0]
 
-    @classmethod
-    def _make_children(
-        cls, i1: Individual, i2: Individual
-    ) -> tuple[_MutableIndividual, _MutableIndividual]:
+    def _crossover(
+        self, parents: list[_MutableIndividual], *, mutate_children: bool = True
+    ) -> list[_MutableIndividual]:
         """
-        Create two new individuals from two parents with the same gene count.
-        First choose a random point in the gene sequance of the parents.
-        Then each child is comprised of the concatenation of the genes on either side
-        of the choosen point on each parent.
-
-        Raises:
-            MismatchedGeneCount
+        Create children from the given parents.
+        The result has the same size as this generation.
+        If `mutate_children`, introduce random mutations to children after
+        crossover.
         """
-        if len(i1) != len(i2):
-            raise MismatchedGeneCount("make children")
-        nb_genes = len(i1)
-        crossover_point = i1.random_crossover_point()
-        genes1 = itertools.chain(i1[0:crossover_point], i2[crossover_point:nb_genes])
-        genes2 = itertools.chain(i2[0:crossover_point], i1[crossover_point:nb_genes])
-        return _MutableIndividual.from_value(genes1), _MutableIndividual.from_value(
-            genes2
-        )
+        children: list[_MutableIndividual] = [parents[0].copy()]  # elitism
+        while len(children) != len(self):
+            [parent1, parent2] = random.choices(parents, k=2)
+            child1, child2 = parent1.make_children(parent2)
+            # add children one at a time to avoid going over the population size
+            for child in child1, child2:
+                if len(children) == len(self):
+                    break
+                if mutate_children:
+                    child.mutate()
+                children.append(child)
+        return children
 
 
 class Individual:
@@ -168,12 +165,6 @@ class Individual:
     def __getitem__(self, idx: int | slice) -> str | list[str]:
         return self._genes[idx]
 
-    def random_crossover_point(self) -> int:
-        """
-        Random index between 1 and len - 1, both iuncluded
-        """
-        return random.randint(1, len(self) - 1)
-
     def evaluate(self, target: Individual, /) -> _Fitness:
         """
         Evaluate this individual against the target.
@@ -211,7 +202,7 @@ class _MutableIndividual(Individual):
         super().__init__(self._random_value(nb_genes))
 
     @classmethod
-    def from_value(cls, value: Iterable[str], /) -> Self:
+    def _from_value(cls, value: Iterable[str], /) -> Self:
         """
         Create a mutable individual from a value
         """
@@ -227,6 +218,34 @@ class _MutableIndividual(Individual):
         for i in range(len(self)):
             if random.random() < self.MUTATION_RATE:
                 self._genes[i] = self._random_gene()
+
+    def make_children(self, coparent: Self) -> tuple[Self, Self]:
+        """
+        Create two new individuals from this individual and a coparent with the same gene count.
+        First choose a random point in the gene sequance of the parents.
+        Then each child is comprised of the concatenation of the genes on either side
+        of the choosen point on each parent.
+
+        Raises:
+            MismatchedGeneCount
+        """
+        if len(self) != len(coparent):
+            raise MismatchedGeneCount("make children")
+        nb_genes = len(self)
+        crossover_point = self._random_crossover_point()
+        genes1 = itertools.chain(
+            self[0:crossover_point], coparent[crossover_point:nb_genes]
+        )
+        genes2 = itertools.chain(
+            coparent[0:crossover_point], self[crossover_point:nb_genes]
+        )
+        return self._from_value(genes1), self._from_value(genes2)
+
+    def _random_crossover_point(self) -> int:
+        """
+        Random index between 1 and len - 1, both iuncluded
+        """
+        return random.randint(1, len(self) - 1)
 
     @classmethod
     def _random_value(cls, lenght: int, /) -> str:

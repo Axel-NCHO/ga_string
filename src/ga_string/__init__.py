@@ -29,7 +29,7 @@ def main() -> None:
     while generation_count <= max_generations:
         print(f"Generation #{generation_count}")
         print(f"Best guess {fittest}")
-        generation = generation.crossover()
+        generation = generation.next_generation()
         fittest = generation.fittest()
         generation_count += 1
         if fittest == target:
