@@ -2,7 +2,9 @@
 Guess a word using a simple geentic algorithm.
 """
 
+from ga_string.generation import Gene
 from ga_string.generation import Generation
+from ga_string.generation import Genes
 from ga_string.generation import Individual
 
 
@@ -13,10 +15,10 @@ def main() -> None:
     target_phrase = str(
         input(
             "Enter an individual/phrase to guess\n "
-            f"(valid genes/characters: '{Individual.GENE_SPACE}'): "
+            f"(valid genes/characters: '{Gene.SPACE}'): "
         )
     )
-    target = Individual(target_phrase)
+    target = Individual(Genes.from_str(target_phrase))
     population_size = int(
         input("Enter the number of individuals/guesses per generation (int, > 0)\n: ")
     )

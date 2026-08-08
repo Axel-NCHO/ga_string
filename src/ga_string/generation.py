@@ -18,10 +18,12 @@ the target individual.
 import itertools
 import random
 from collections.abc import Iterable
+from collections.abc import Iterator
 from copy import deepcopy
 from typing import Final
 from typing import NewType
 from typing import Self
+from typing import cast
 from typing import overload
 
 
@@ -37,8 +39,8 @@ class InvalidGene(Exception):
 
 class MismatchedGeneCount(Exception):
     """
-    Raised when trying to perform an operation involving two genes that requires
-    them to have the same number of genes.
+    Raised when trying to perform an operation involving two individuals that
+    requires them to have the same number of genes.
     """
 
 
@@ -100,7 +102,7 @@ class Generation:
         """
         Return the fittest individual of this generation.
         """
-        return self._top_fifty_percent()[0]
+        return self._select_fittests()[0]
 
     def _crossover(
         self, parents: list[_MutableIndividual], *, mutate_children: bool = True
@@ -130,19 +132,14 @@ class Individual:
     An individual
     """
 
-    GENE_SPACE: Final[str] = "abcdefghijklmnopqrstuvwxyz"
-
-    def __init__(self, value: str) -> None:
+    def __init__(self, value: Genes) -> None:
         """
         Create a new individual
 
         Raises:
             InvalidGene
         """
-        for gene in value:
-            if gene not in self.GENE_SPACE:
-                raise InvalidGene(gene)
-        self._genes = list(value)
+        self._genes: Genes = value
 
     def __len__(self) -> int:
         return len(self._genes)
@@ -156,14 +153,19 @@ class Individual:
         return "".join(self._genes)
 
     def __repr__(self) -> str:
-        return f"Individual({self.__str__()})"
+        return f"Individual(Genes.from_str('{self.__str__()}'))"
 
     @overload
-    def __getitem__(self, idx: int) -> str: ...
+    def __getitem__(self, idx: int) -> Gene: ...
     @overload
-    def __getitem__(self, idx: slice) -> list[str]: ...
-    def __getitem__(self, idx: int | slice) -> str | list[str]:
-        return self._genes[idx]
+    def __getitem__(self, idx: slice) -> Genes: ...
+    def __getitem__(self, idx: int | slice) -> Gene | Genes:
+        if isinstance(res := self._genes[idx], Gene):
+            return res
+        return Genes._from_list(res)
+
+    def __iter__(self) -> Iterator[Gene]:
+        return iter(self._genes)
 
     def evaluate(self, target: Individual, /) -> _Fitness:
         """
@@ -174,10 +176,9 @@ class Individual:
         """
         if len(self) != len(target):
             raise MismatchedGeneCount("evaluate")
-        raw_fitness: int = 0
-        for i in range(len(self)):
-            if self._genes[i] == target._genes[i]:  # pylint: disable=protected-access
-                raw_fitness += 1
+        raw_fitness: int = sum(
+            gene == target_gene for gene, target_gene in zip(self, target)
+        )
         return _Fitness(raw_fitness)
 
     def copy(self) -> Self:
@@ -185,6 +186,105 @@ class Individual:
         Copy this individual
         """
         return deepcopy(self)
+
+
+class Gene(str):
+    """
+    A gene.
+    """
+
+    SPACE: Final[str] = "abcdefghijklmnopqrstuvwxyz"
+    """
+    All possible values of a gene
+    """
+
+    def __new__(cls, value: str) -> Self:
+        """
+        Create a new gene from a string value.
+
+        Raises:
+            InvalidGene:
+        """
+        if len(value) != 1:
+            raise InvalidGene(value)
+        if value not in cls.SPACE:
+            raise InvalidGene(value)
+        return super().__new__(cls, value)
+
+    @classmethod
+    def random(cls) -> Self:
+        """
+        Returns a random gene.
+        """
+        return cls(random.choice(cls.SPACE))
+
+    @classmethod
+    def random_k(cls, k: int = 1, /) -> list[Self]:
+        """
+        Returns `k` random genes.
+        """
+        if k <= 0:
+            raise ValueError("generate no genes")
+        return [cls(c) for c in random.choices(cls.SPACE, k=k)]
+
+
+class _UncheckedGene(Gene):
+    """
+    A gene created without checking that the `str` is a valid gene.
+    The given string MUST be a valid gene in the gene space.
+    """
+
+    def __new__(cls, value: str) -> Self:
+        """
+        Create a new gene from a string value without checking that
+        the string is a valid gene.
+        The given string MUST be a valid gene in the gene space.
+        """
+        return str.__new__(cls, value)
+
+
+class Genes(list[Gene]):
+    """
+    A sequence of `Gene`s.
+    """
+
+    @classmethod
+    def from_str(cls, value: str) -> Self:
+        """
+        Returns a sequence of genes from a string
+        """
+        return cls(Gene(c) for c in value)
+
+    @classmethod
+    def random(cls, length: int, /) -> Self:
+        """
+        Returns random genes.
+        """
+        return cls._from_list(_UncheckedGene.random_k(length))
+
+    @classmethod
+    def _from_str_unchecked(cls, value: str) -> Self:
+        """
+        Returns a sequence of genes from without checking if characters
+        are valid genes. Characters MUST be valid genes.
+        """
+        return cls(_UncheckedGene(c) for c in value)
+
+    @classmethod
+    def _from_list(
+        cls, value: list[Gene | _UncheckedGene] | list[Gene] | list[_UncheckedGene]
+    ) -> Self:
+        """
+        Casts the input. A list of genes is already a valid `Genes`.
+        """
+        return cast(Self, value)
+
+    @classmethod
+    def from_iterable(cls, value: Iterable[Gene]) -> Self:
+        """
+        Collects the input in a list and casts it.
+        """
+        return cls._from_list(list(value))
 
 
 class _MutableIndividual(Individual):
@@ -199,16 +299,15 @@ class _MutableIndividual(Individual):
     """
 
     def __init__(self, nb_genes: int, /) -> None:
-        super().__init__(self._random_value(nb_genes))
+        super().__init__(Genes.random(nb_genes))
 
     @classmethod
-    def _from_value(cls, value: Iterable[str], /) -> Self:
+    def _with_genes(cls, value: Genes, /) -> Self:
         """
         Create a mutable individual from a value
         """
-        all_genes = list(value)
-        this = cls(len(all_genes))
-        this._genes = all_genes
+        this = cls(len(value))
+        this._genes = value
         return this
 
     def mutate(self) -> None:
@@ -217,7 +316,7 @@ class _MutableIndividual(Individual):
         """
         for i in range(len(self)):
             if random.random() < self.MUTATION_RATE:
-                self._genes[i] = self._random_gene()
+                self._genes[i] = _UncheckedGene.random()
 
     def make_children(self, coparent: Self) -> tuple[Self, Self]:
         """
@@ -239,21 +338,15 @@ class _MutableIndividual(Individual):
         genes2 = itertools.chain(
             coparent[0:crossover_point], self[crossover_point:nb_genes]
         )
-        return self._from_value(genes1), self._from_value(genes2)
+        return self._with_genes(Genes.from_iterable(genes1)), self._with_genes(
+            Genes.from_iterable(genes2)
+        )
 
     def _random_crossover_point(self) -> int:
         """
         Random index between 1 and len - 1, both iuncluded
         """
         return random.randint(1, len(self) - 1)
-
-    @classmethod
-    def _random_value(cls, lenght: int, /) -> str:
-        return "".join(random.choices(cls.GENE_SPACE, k=lenght))
-
-    @classmethod
-    def _random_gene(cls) -> str:
-        return random.choice(cls.GENE_SPACE)
 
 
 _Fitness = NewType("_Fitness", int)
