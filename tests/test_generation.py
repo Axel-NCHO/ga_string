@@ -6,6 +6,7 @@ from unittest.mock import patch
 
 import pytest
 
+from ga_string.generation import Amount
 from ga_string.generation import Generation
 from ga_string.generation import Genes
 from ga_string.generation import Individual
@@ -83,6 +84,26 @@ class TestMutableIndividual:
         mut_individual = _MutableIndividual._with_genes(Genes.from_str("individual"))
         assert str(mut_individual) == "individual"
 
+    @pytest.mark.parametrize("nb_points", [Amount(i) for i in range(1, 8)])
+    def test_random_crossover_points(self, nb_points: Amount) -> None:
+        """
+        Test generated random crossover points.
+        """
+        individual = _MutableIndividual._with_genes(Genes.from_str("aaaabbbb"))
+        points = individual._random_crossover_points(nb_points)
+        assert len(points) == nb_points
+        for i in range(nb_points - 1):
+            assert points[i] < points[i + 1]
+
+    def test_random_crossover_points_exceeds(self) -> None:
+        """
+        Test that generating random crossover points fails if the amount exceeds
+        the length of the infividual.
+        """
+        individual = _MutableIndividual._with_genes(Genes.from_str("aaaabbbb"))
+        with pytest.raises(MismatchedGeneCount):
+            _ = individual._random_crossover_points(Amount(10))
+
     def test_make_children(self) -> None:
         """
         Test make two children from two parents
@@ -90,12 +111,12 @@ class TestMutableIndividual:
         i1 = _MutableIndividual._with_genes(Genes.from_str("aaaabbbb"))
         i2 = _MutableIndividual._with_genes(Genes.from_str("ccccdddd"))
         with patch(
-            "ga_string.generation._MutableIndividual._random_crossover_point",
-            return_value=2,
+            "ga_string.generation._MutableIndividual._random_crossover_points",
+            return_value=[2, 5],
         ):
-            c1, c2 = i1.make_children(i2)
-            assert str(c1) == "aaccdddd"
-            assert str(c2) == "ccaabbbb"
+            c1, c2 = i1.make_children(i2, crossover_points=Amount(2))
+            assert str(c1) == "aaccdbbb"
+            assert str(c2) == "ccaabddd"
 
     def test_make_children_mismatched_gene_count(self) -> None:
         """
@@ -104,7 +125,7 @@ class TestMutableIndividual:
         i1 = _MutableIndividual._with_genes(Genes.from_str("aaaabbbb"))
         i2 = _MutableIndividual._with_genes(Genes.from_str("ccccdddde"))
         with pytest.raises(MismatchedGeneCount):
-            _ = i1.make_children(i2)
+            _ = i1.make_children(i2, crossover_points=Amount(1))
 
 
 # pylint: enable=too-few-public-methods
@@ -119,19 +140,23 @@ class TestGeneration:
         """
         Test getting the size of a generation
         """
-        generation = Generation(10, target=Individual(Genes.from_str("individual")))
+        generation = Generation(
+            Amount(10), target=Individual(Genes.from_str("individual"))
+        )
         assert len(generation) == 10
 
     def test_top_fifty_percent(self) -> None:
         """
-        Test the top 50% fittest individuals of a generation
+        Test the top 50% fittest individuals of a generation (0.5 default crossover rate).
         """
-        generation = Generation(2, target=Individual(Genes.from_str("individual")))
+        generation = Generation(
+            Amount(2), target=Individual(Genes.from_str("individual"))
+        )
         generation._individuals = [
             _MutableIndividual._with_genes(Genes.from_str("individuax")),
             _MutableIndividual._with_genes(Genes.from_str("individuxx")),
         ]
-        assert generation._top_fifty_percent() == [
+        assert generation._select_fittests() == [
             _MutableIndividual._with_genes(Genes.from_str("individuax"))
         ]
         assert generation.fittest() == Individual(Genes.from_str("individuax"))

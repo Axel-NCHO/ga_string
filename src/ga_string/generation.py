@@ -39,15 +39,36 @@ class InvalidGene(Exception):
 
 class MismatchedGeneCount(Exception):
     """
-    Raised when trying to perform an operation involving two individuals that
-    requires them to have the same number of genes.
+    Raised when trying to perform an operation involving individuals that
+    requires them to have a given number of genes.
     """
 
 
-class EmptyGeneration(Exception):
+class Amount(int):
     """
-    Raised when creating a generation of negative of null size.
+    A amout is a int >= 1.
     """
+
+    def __new__(cls, value: int) -> Self:
+        if value <= 0:
+            raise ValueError(f"amout must be in >=1, {value} was given")
+        return super().__new__(cls, value)
+
+
+class Rate(float):
+    """
+    A rate is a probability in [0,1).
+    """
+
+    def __new__(cls, value: float) -> Self:
+        if not 0.0 <= value < 1.0:
+            raise ValueError(f"rate must be in [0,1], {value} was given")
+        return super().__new__(cls, value)
+
+
+DEFAULT_CROSSOVER_RATE: Final[Rate] = Rate(0.5)
+DEFAULT_MUTATION_RATE: Final[Rate] = Rate(0.05)
+DEFAULT_CROSSOVER_POINTS: Final[Amount] = Amount(1)
 
 
 class Generation:
@@ -55,16 +76,25 @@ class Generation:
     A generation is made of several individuals/guesses.
     """
 
-    def __init__(self, size: int, *, target: Individual) -> None:
+    def __init__(
+        self,
+        size: Amount,
+        *,
+        target: Individual,
+        crossover_rate: Rate = DEFAULT_MUTATION_RATE,
+        crossover_points: Amount = DEFAULT_CROSSOVER_POINTS,
+        mutation_rate: Rate = DEFAULT_MUTATION_RATE,
+    ) -> None:
         """
         Create a new generation.
 
         Raises:
             EmptyGeneration
         """
-        if size <= 0:
-            raise EmptyGeneration
         self._target = target
+        self.crossover_rate: Final[Rate] = crossover_rate
+        self.crossover_points: Final[Amount] = crossover_points
+        self.mutation_rate: Final[Rate] = mutation_rate
         self._individuals = [_MutableIndividual(len(target)) for _ in range(size)]
 
     def __len__(self) -> int:
@@ -79,24 +109,27 @@ class Generation:
         """
         parents = self._select_fittests()
         children = self._crossover(parents, mutate_children=True)
-        next_gen = Generation(len(self), target=self._target)
+        next_gen = Generation(
+            Amount(len(self)),
+            target=self._target,
+            mutation_rate=self.mutation_rate,
+            crossover_rate=self.crossover_rate,
+            crossover_points=self.crossover_points,
+        )
         next_gen._individuals = children  # pylint: disable=protected-access
         return next_gen
 
     def _select_fittests(self) -> list[_MutableIndividual]:
         """
-        Select the fittest individuals
-        """
-        return self._top_fifty_percent()
-
-    def _top_fifty_percent(self) -> list[_MutableIndividual]:
-        """
-        Return the top 50% fittest individuals sorted in decreasing value of fitness.
+        Select the fittest individuals based on fitness scores and crossover rate.
+        This selection always returns at least one individual.
         """
         all_sorted = sorted(
             self._individuals, key=lambda ind: ind.evaluate(self._target), reverse=True
         )
-        return all_sorted[: len(self._individuals) // 2]
+        number = int(self.crossover_rate * len(self))
+        # if number == 0, return at leat ine individual, the fittest one
+        return all_sorted[: number + 1]
 
     def fittest(self) -> Individual:
         """
@@ -116,13 +149,13 @@ class Generation:
         children: list[_MutableIndividual] = [parents[0].copy()]  # elitism
         while len(children) != len(self):
             [parent1, parent2] = random.choices(parents, k=2)
-            child1, child2 = parent1.make_children(parent2)
+            child1, child2 = parent1.make_children(parent2, self.crossover_points)
             # add children one at a time to avoid going over the population size
             for child in child1, child2:
                 if len(children) == len(self):
                     break
                 if mutate_children:
-                    child.mutate()
+                    child.mutate(self.mutation_rate)
                 children.append(child)
         return children
 
@@ -193,7 +226,9 @@ class Gene(str):
     A gene.
     """
 
-    SPACE: Final[str] = "abcdefghijklmnopqrstuvwxyz_,!:.-? ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+    SPACE: Final[str] = (
+        "abcdefghijklmnopqrstuvwxyz_,!:.-? ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+    )
     """
     All possible values of a gene
     """
@@ -226,21 +261,6 @@ class Gene(str):
         if k <= 0:
             raise ValueError("generate no genes")
         return [cls(c) for c in random.choices(cls.SPACE, k=k)]
-
-
-class _UncheckedGene(Gene):
-    """
-    A gene created without checking that the `str` is a valid gene.
-    The given string MUST be a valid gene in the gene space.
-    """
-
-    def __new__(cls, value: str) -> Self:
-        """
-        Create a new gene from a string value without checking that
-        the string is a valid gene.
-        The given string MUST be a valid gene in the gene space.
-        """
-        return str.__new__(cls, value)
 
 
 class Genes(list[Gene]):
@@ -287,15 +307,25 @@ class Genes(list[Gene]):
         return cls._from_list(list(value))
 
 
+class _UncheckedGene(Gene):
+    """
+    A gene created without checking that the `str` is a valid gene.
+    The given string MUST be a valid gene in the gene space.
+    """
+
+    def __new__(cls, value: str) -> Self:
+        """
+        Create a new gene from a string value without checking that
+        the string is a valid gene.
+        The given string MUST be a valid gene in the gene space.
+        """
+        return str.__new__(cls, value)
+
+
 class _MutableIndividual(Individual):
     """
     Individual whose genes can be mutated.
     Such individual is always initialized with random genes.
-    """
-
-    MUTATION_RATE: Final[float] = 0.05
-    """
-    Probability of mutating a gene
     """
 
     def __init__(self, nb_genes: int, /) -> None:
@@ -310,43 +340,56 @@ class _MutableIndividual(Individual):
         this._genes = value
         return this
 
-    def mutate(self) -> None:
+    def mutate(self, mutation_rate: Rate) -> None:
         """
         Replace the genes of this individual by random genes with a probability of `mutation_pb`
         """
         for i in range(len(self)):
-            if random.random() < self.MUTATION_RATE:
+            if random.random() < mutation_rate:
                 self._genes[i] = _UncheckedGene.random()
 
-    def make_children(self, coparent: Self) -> tuple[Self, Self]:
+    def make_children(
+        self, coparent: Self, crossover_points: Amount
+    ) -> tuple[Self, Self]:
         """
         Create two new individuals from this individual and a coparent with the same gene count.
-        First choose a random point in the gene sequance of the parents.
+        First choose random points in the gene sequance of the parents.
         Then each child is comprised of the concatenation of the genes on either side
-        of the choosen point on each parent.
+        of the each point in each parent.
 
         Raises:
-            MismatchedGeneCount
+            MismatchedGeneCount: if both parents do not have the same number of genes, or
+                if the amount of crossover_points exceeds the number of genes of this individual.
         """
         if len(self) != len(coparent):
             raise MismatchedGeneCount("make children")
         nb_genes = len(self)
-        crossover_point = self._random_crossover_point()
-        genes1 = itertools.chain(
-            self[0:crossover_point], coparent[crossover_point:nb_genes]
+        points = self._random_crossover_points(crossover_points)
+        bounds = [0] + points + [nb_genes]
+        genes1 = itertools.chain.from_iterable(
+            (self if i % 2 == 0 else coparent)[bounds[i] : bounds[i + 1]]
+            for i in range(len(bounds) - 1)
         )
-        genes2 = itertools.chain(
-            coparent[0:crossover_point], self[crossover_point:nb_genes]
+        genes2 = itertools.chain.from_iterable(
+            (coparent if i % 2 == 0 else self)[bounds[i] : bounds[i + 1]]
+            for i in range(len(bounds) - 1)
         )
         return self._with_genes(Genes.from_iterable(genes1)), self._with_genes(
             Genes.from_iterable(genes2)
         )
 
-    def _random_crossover_point(self) -> int:
+    def _random_crossover_points(self, k: Amount, /) -> list[int]:
         """
-        Random index between 1 and len - 1, both iuncluded
+        Random index between 1 and len - 1, both iuncluded.
+
+        Raises:
+            MismatchedGeneCount: if the amount exceeds the number of genes of this individual.
         """
-        return random.randint(1, len(self) - 1)
+        if k >= len(self):
+            raise MismatchedGeneCount(
+                f"crossover points cannot exceed {len(self) - 1}, {k} was given"
+            )
+        return sorted(random.sample(range(1, len(self)), k=k))
 
 
 _Fitness = NewType("_Fitness", int)
